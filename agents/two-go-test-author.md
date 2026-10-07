@@ -30,7 +30,8 @@ endpoint, a user flow, or an API spec into clear, runnable two-go tests.
   capture a token from one response and fill `{{token}}` in later ones.
 - For values that appear after a delay, use `eventually(fn, options)` instead of
   a fixed sleep.
-- Use a predicate or a partial object for fields whose exact value is not stable.
+- For fields whose exact value is not stable, use a predicate, a regular
+  expression, or a subset match (`expectJsonContains(path, partial)` or `expectValue(path).toMatchObject(partial)`). `expectJson` with an object is a full deep compare.
 
 ## Output rules
 
