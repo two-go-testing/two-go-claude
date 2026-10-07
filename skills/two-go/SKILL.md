@@ -28,11 +28,15 @@ await go("https://api.example.com")
 
 `go(baseUrl)` returns a client. Call `.get`, `.post`, `.put`, `.patch`, or
 `.delete` with a path. Attach a body with `.json(obj)`, headers with
-`.header(name, value)`, and auth with `.bearer(token)` or `.basic(user, pass)`.
-Add expectations, then `await` the chain. Reuse one client across requests:
+`.header(name, value)`, and auth with `.bearer(token)`. Add expectations, then
+`await` the chain. Reuse one client across requests, with shared headers set on
+the client:
 
 ```js
-const api = go("https://api.example.com").bearer(token);
+const api = go({
+  baseURL: "https://api.example.com",
+  headers: { authorization: `Bearer ${token}` },
+});
 await api.get("/health").expectOk();
 ```
 
@@ -66,12 +70,13 @@ await api.get("/health").expectOk();
 
 The `path` is a dotted or bracketed JSON path like `data[0].id`. The matcher you
 pass to `expectJson` can be a literal, a regular expression, a predicate
-function, or a partial object that is matched by subset:
+function, or an object or array compared by deep equality. For a subset match
+on an object, use `expectJsonContains`:
 
 ```js
 await api.get("/users")
   .expectJson("data[0].role", (role) => role === "admin")
-  .expectJson("meta", { page: 1, total: 2 })
+  .expectJsonContains("meta", { page: 1 })
   .expectHeader("x-trace-id", /^[0-9a-f-]+$/);
 ```
 
@@ -103,9 +108,10 @@ softly((expect) => {
 
 ## Sessions and auth chaining
 
-A session carries cookies and named variables across requests. Use `extract` to
-capture a value from one response and replace `{{name}}` placeholders in later
-requests:
+A session shares named variables across requests. Use `extract` to capture a
+value from one response and fill `{{name}}` placeholders in the path, headers,
+and body of later requests. Pass `session({ baseURL, cookies: true })` to also
+carry cookies:
 
 ```js
 import { session } from "two-go";
@@ -136,7 +142,18 @@ await eventually(
 );
 ```
 
-`pollUntil` is another name for `eventually`.
+`pollUntil(fn, predicate, options)` is the value-based variant: it calls `fn`
+until `predicate(result)` is truthy and resolves with that result:
+
+```js
+import { pollUntil } from "two-go";
+
+const job = await pollUntil(
+  () => api.get("/jobs/7").then((r) => r.body),
+  (body) => body.status === "done",
+  { timeout: 10000, interval: 500 }
+);
+```
 
 ## Snapshots
 
@@ -157,7 +174,7 @@ reuse it as a contract test:
 import { inferSchema } from "two-go";
 
 const res = await api.get("/users").expectOk();
-const schema = res.toSchema();
+const schema = inferSchema(res.body); // same as res.toSchema()
 await api.get("/users").expectJsonSchema(schema);
 ```
 
@@ -185,6 +202,22 @@ import { fromOpenapi, fromPostman } from "two-go/importers";
 These turn a spec or a collection into ready requests so you do not have to type
 every path by hand.
 
+## BDD style
+
+`two-go/bdd` gives runner-agnostic Gherkin-style steps. Step helpers are
+capitalized: `Given`, `When`, `Then`, `And`.
+
+```js
+import { test } from "node:test";
+import { scenario, Given, When, Then } from "two-go/bdd";
+
+test("creating a user", scenario([
+  Given("a payload", (w) => { w.payload = { name: "Ada" }; }),
+  When("it is posted", async (w) => { w.res = await api.post("/users").json(w.payload); }),
+  Then("it is created", (w) => w.res.expectStatus(201)),
+]));
+```
+
 ## How to write a test file
 
 Prefer node:test, since it needs no extra dependency:
@@ -205,7 +238,8 @@ test("GET /users returns the first user", async () => {
 
 - Start from the base URL and a single shared client, then branch per request.
 - Assert status first, then headers, then body. Keep one behavior per test.
-- Use a partial object or a predicate for fields whose exact value is not stable.
+- For fields whose exact value is not stable, use a predicate, a regular
+  expression, or a subset match (`expectJsonContains(path, partial)` or `expectValue(path).toMatchObject(partial)`).
 - For flows that depend on prior state, such as login then fetch, use a session
   and `extract` rather than copying tokens by hand.
 - For values that appear after a delay, use `eventually` instead of a fixed sleep.

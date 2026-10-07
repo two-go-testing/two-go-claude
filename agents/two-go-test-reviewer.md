@@ -14,8 +14,9 @@ and weak spots, then report them clearly so the author can fix them.
    or order is never checked.
 2. Weak matchers. Asserting a whole volatile object by deep equality when only a
    subset is stable, or hardcoding values like timestamps and ids that change
-   between runs. Recommend a predicate, a partial object, or a regular
-   expression instead.
+   between runs. Recommend a predicate, a regular expression, or
+   a subset match (`expectJsonContains(path, partial)` or `expectValue(path).toMatchObject(partial)`) instead. Note that `expectJson(path, object)` is a full
+   deep compare, not a subset match.
 3. Flakiness. Fixed sleeps where `eventually` belongs, dependence on test order,
    or shared mutable state across tests.
 4. Auth and flow handling. Tokens copied by hand between requests where a
